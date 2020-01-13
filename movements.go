@@ -3,16 +3,19 @@ package main
 import (
 	"context"
 	"fmt"
-	"github.com/wavesplatform/gowaves/pkg/client"
-	"github.com/wavesplatform/gowaves/pkg/proto"
+	"math"
 	"net/http"
 	"os"
 	"time"
+
+	"github.com/wavesplatform/gowaves/pkg/client"
+	"github.com/wavesplatform/gowaves/pkg/proto"
 )
 
 type Movements struct {
 	file   *os.File
 	blocks *client.Blocks
+	assets *client.Assets
 }
 
 func NewMovements() (*Movements, error) {
@@ -27,10 +30,12 @@ func NewMovements() (*Movements, error) {
 	}
 
 	blocks := client.NewBlocks(defaultOptions)
+	assets := client.NewAssets(defaultOptions)
 
 	return &Movements{
 		file:   file,
 		blocks: blocks,
+		assets: assets,
 	}, nil
 }
 
@@ -137,8 +142,25 @@ func (m *Movements) Parse() error {
 					break
 				case *proto.ExchangeV1:
 					exchange := tx.(*proto.ExchangeV1)
-					if exchange.BuyOrder.AssetPair.AmountAsset.ID == asset.ID || exchange.BuyOrder.AssetPair.PriceAsset.ID == asset.ID ||
-						exchange.SellOrder.AssetPair.AmountAsset.ID == asset.ID || exchange.SellOrder.AssetPair.PriceAsset.ID == asset.ID {
+					if exchange.BuyOrder.AssetPair.PriceAsset.ID == asset.ID {
+						var sender, recipient string
+
+						s, _ := proto.NewAddressFromPublicKey(proto.MainNetScheme, exchange.BuyOrder.SenderPK)
+						r, _ := proto.NewAddressFromPublicKey(proto.MainNetScheme, exchange.SellOrder.SenderPK)
+						sender = s.String()
+						recipient = r.String()
+
+						amount := uint64(float64(exchange.Amount*exchange.Price) / math.Pow10(8))
+
+						m.WriteAssetEntry(
+							count+1,
+							exchange.ID.String(),
+							int(tx.GetTypeVersion().Type),
+							amount,
+							sender,
+							recipient,
+						)
+					} else if exchange.BuyOrder.AssetPair.AmountAsset.ID == asset.ID {
 						var sender, recipient string
 
 						s, _ := proto.NewAddressFromPublicKey(proto.MainNetScheme, exchange.BuyOrder.SenderPK)
@@ -158,8 +180,25 @@ func (m *Movements) Parse() error {
 					break
 				case *proto.ExchangeV2:
 					exchange := tx.(*proto.ExchangeV2)
-					if exchange.BuyOrder.GetAssetPair().AmountAsset.ID == asset.ID || exchange.BuyOrder.GetAssetPair().PriceAsset.ID == asset.ID ||
-						exchange.SellOrder.GetAssetPair().AmountAsset.ID == asset.ID || exchange.SellOrder.GetAssetPair().PriceAsset.ID == asset.ID {
+					if exchange.BuyOrder.GetAssetPair().PriceAsset.ID == asset.ID {
+						var sender, recipient string
+
+						s, _ := proto.NewAddressFromPublicKey(proto.MainNetScheme, exchange.BuyOrder.GetSenderPK())
+						r, _ := proto.NewAddressFromPublicKey(proto.MainNetScheme, exchange.SellOrder.GetSenderPK())
+						sender = s.String()
+						recipient = r.String()
+
+						amount := uint64(float64(exchange.Amount*exchange.Price) / math.Pow10(8))
+
+						m.WriteAssetEntry(
+							count+1,
+							exchange.ID.String(),
+							int(tx.GetTypeVersion().Type),
+							amount,
+							sender,
+							recipient,
+						)
+					} else if exchange.BuyOrder.GetAssetPair().AmountAsset.ID == asset.ID {
 						var sender, recipient string
 
 						s, _ := proto.NewAddressFromPublicKey(proto.MainNetScheme, exchange.BuyOrder.GetSenderPK())
